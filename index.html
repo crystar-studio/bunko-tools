@@ -59,11 +59,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .stats{font-size:12px;background:var(--desk);border:1px solid var(--line);border-radius:4px;padding:8px 10px;margin-top:6px}
 .stats b{font-size:15px}
 
-.main{position:relative;display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,var(--desk) 0%,var(--desk-2) 100%)}
+.main{position:relative;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,var(--desk) 0%,var(--desk-2) 100%)}
 .toolbar{display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;flex-wrap:wrap}
 .toolbar .pos{min-width:130px;text-align:center;font-size:13px;color:var(--muted)}
-.stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;user-select:none}
-.scaler{transform-origin:top left}
+.stage{flex:1;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;user-select:none}
+.scaler{transform-origin:top left;position:absolute;left:0;top:0}
+.fitwrap{position:relative;overflow:hidden;flex:none}
 .spread{display:flex;flex-direction:row-reverse;box-shadow:0 12px 32px var(--shadow);position:relative}
 .spread.single{box-shadow:0 10px 26px var(--shadow)}
 .slot{width:105mm;height:148mm;position:relative}
@@ -527,9 +528,11 @@ function makeSpreads(){
 function show(){
   const st = $("stage"); st.innerHTML="";
   if (!spreads.length) return;
+  // 中身を入れる前に、空の状態でステージの大きさを測る（中身の実寸で広がらないように）
+  const r = st.getBoundingClientRect();
   const sp = spreads[cur];
   const isSingle = sp.length===1;
-  const wrap = document.createElement("div");
+  const wrap = document.createElement("div"); wrap.className = "fitwrap";
   const spread = document.createElement("div"); spread.className = "spread"+(isSingle?" single":"");
   for (const p of sp){ const s=document.createElement("div"); s.className="slot"+(p?"":" empty");
     if (p) s.appendChild(p.el.cloneNode(true)); spread.appendChild(s); }
@@ -539,8 +542,8 @@ function show(){
   const scaler=document.createElement("div"); scaler.className="scaler"; scaler.appendChild(spread);
   wrap.appendChild(scaler); st.appendChild(wrap);
   const wmm = 105*sp.length, hmm=148;
-  const r = st.getBoundingClientRect();
-  const sc = Math.max(0.2, Math.min((r.height-24)/(hmm*MM), (r.width-24)/(wmm*MM)));
+  const pad = r.width < 500 ? 8 : 24;
+  const sc = Math.max(0.05, Math.min((r.height-pad)/(hmm*MM), (r.width-pad)/(wmm*MM)));
   scaler.style.transform = `scale(${sc})`;
   wrap.style.width = `${wmm*MM*sc}px`; wrap.style.height = `${hmm*MM*sc}px`;
   const nums = sp.filter(Boolean).map(p=>p.kind==="cover"?"表紙":p.kind==="kuchie"?"口絵":p.num);
@@ -570,7 +573,14 @@ let tmr; $("text").addEventListener("input",()=>{ clearTimeout(tmr); tmr=setTime
 $("btnPrint").onclick=async()=>{ await build(); window.print(); };
 $("btnReader").onclick=()=>{ document.body.classList.add("reader"); $("btnEdit").hidden=false; requestAnimationFrame(show); };
 $("btnEdit").onclick=()=>{ document.body.classList.remove("reader"); $("btnEdit").hidden=true; requestAnimationFrame(show); };
-let rt; window.addEventListener("resize",()=>{clearTimeout(rt); rt=setTimeout(show,120);});
+// ウィンドウだけでなく、ステージ自体の大きさの変化（ツールバーの折り返し・パネル開閉など）にも追従
+let rt, lastW=0, lastH=0;
+const onResize = () => { clearTimeout(rt); rt = setTimeout(()=>{
+  const r = $("stage").getBoundingClientRect();
+  if (Math.abs(r.width-lastW) < 1 && Math.abs(r.height-lastH) < 1) return;
+  lastW = r.width; lastH = r.height; show(); }, 60); };
+window.addEventListener("resize", onResize);
+if ("ResizeObserver" in window) new ResizeObserver(onResize).observe($("stage"));
 
 function refreshImgUI(){
   const names = Object.keys(S.images||{});
